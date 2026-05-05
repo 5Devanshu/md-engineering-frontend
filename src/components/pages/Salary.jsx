@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Play, CheckCircle, X, IndianRupee, TrendingUp, Users, Upload } from 'lucide-react';
-import { computeSalaryApi, getPayrollApi, markPaidApi, uploadPayrollExcelApi } from '../../services/repository/salaryRepository';
+import { Play, CheckCircle, X, IndianRupee, TrendingUp, Users, Upload, Eye, Download } from 'lucide-react';
+import { computeSalaryApi, getPayrollApi, markPaidApi, uploadPayrollExcelApi, getPayrollImportsApi } from '../../services/repository/salaryRepository';
 import Loader from '../common/Loader';
 
 export default function Salary() {
@@ -17,6 +17,10 @@ export default function Salary() {
   const [computeResult, setComputeResult] = useState(null);
   const [uploading, setUploading]     = useState(false);
   const [uploadResult, setUploadResult] = useState(null);
+  const [activeTab, setActiveTab]  = useState('payroll');
+  const [imports, setImports]      = useState([]);
+  const [importsLoading, setImportsLoading] = useState(false);
+  const [importDetail, setImportDetail] = useState(null);
 
   const flash = (text, type = 'success') => {
     setMsg({ text, type });
@@ -32,7 +36,22 @@ export default function Salary() {
     setLoading(false);
   };
 
+  const fetchImports = async () => {
+    setImportsLoading(true);
+    try {
+      const { data } = await getPayrollImportsApi(100, 0);
+      setImports(data.data?.imports || []);
+    } catch { setImports([]); }
+    setImportsLoading(false);
+  };
+
   useEffect(() => { fetchPayroll(); }, [month, year]);
+
+  useEffect(() => {
+    if (activeTab === 'imports') {
+      fetchImports();
+    }
+  }, [activeTab]);
 
   const handleCompute = async () => {
     setComputing(true);
@@ -95,14 +114,36 @@ export default function Salary() {
 
   return (
     <div className="space-y-5">
-      {/* Header */}
+      {/* Header with Tabs */}
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-bold text-[#2d3748]">Salary Management</h2>
-        <button onClick={handleCompute} disabled={computing}
-          className="flex items-center gap-2 px-5 py-2.5 bg-[#6D94C5] text-white text-sm font-semibold rounded-xl hover:bg-[#5a7eb0] disabled:opacity-60 transition-all shadow-md">
-          <Play size={15} />
-          {computing ? 'Computing...' : `Compute ${monthName}`}
-        </button>
+        <div className="flex items-center gap-2">
+          <h2 className="text-lg font-bold text-[#2d3748]">Salary Management</h2>
+          <div className="flex gap-1 bg-white rounded-xl border border-[#E8DFCA] p-1">
+            <button onClick={() => setActiveTab('payroll')}
+              className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                activeTab === 'payroll'
+                  ? 'bg-[#6D94C5] text-white'
+                  : 'text-[#718096] hover:text-[#6D94C5]'
+              }`}>
+              Current Payroll
+            </button>
+            <button onClick={() => setActiveTab('imports')}
+              className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                activeTab === 'imports'
+                  ? 'bg-[#6D94C5] text-white'
+                  : 'text-[#718096] hover:text-[#6D94C5]'
+              }`}>
+              Import History
+            </button>
+          </div>
+        </div>
+        {activeTab === 'payroll' && (
+          <button onClick={handleCompute} disabled={computing}
+            className="flex items-center gap-2 px-5 py-2.5 bg-[#6D94C5] text-white text-sm font-semibold rounded-xl hover:bg-[#5a7eb0] disabled:opacity-60 transition-all shadow-md">
+            <Play size={15} />
+            {computing ? 'Computing...' : `Compute ${monthName}`}
+          </button>
+        )}
       </div>
 
       {msg.text && (
@@ -110,6 +151,10 @@ export default function Salary() {
           {msg.text}
         </div>
       )}
+
+      {/* PAYROLL TAB */}
+      {activeTab === 'payroll' && (
+      <div className="space-y-5">
 
       {/* Month Selector */}
       <div className="bg-white rounded-2xl border border-[#E8DFCA] p-5 flex gap-4 items-end">
@@ -300,6 +345,68 @@ export default function Salary() {
           <p className="text-xs text-[#718096] mt-1">Click "Compute" to generate salary for this month</p>
         </div>
       )}
+      </div>
+      )}
+
+      {/* IMPORTS TAB */}
+      {activeTab === 'imports' && (
+      <div className="space-y-5">
+        {importsLoading ? <Loader /> : imports.length > 0 ? (
+          <div className="bg-white rounded-2xl border border-[#E8DFCA] overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-[#F5EFE6]">
+                  <tr>{['ID', 'Employee', 'Finalized Amount', 'Deductions', 'Uploaded By', 'Upload Date', 'Action'].map(h => (
+                    <th key={h} className="px-4 py-3 text-left text-xs font-bold text-[#718096] whitespace-nowrap">{h}</th>
+                  ))}</tr>
+                </thead>
+                <tbody className="divide-y divide-[#F5EFE6]">
+                  {imports.map(r => (
+                    <tr key={r.id} className="hover:bg-[#F5EFE6]">
+                      <td className="px-4 py-3 text-[#2d3748] font-semibold">#{r.id}</td>
+                      <td className="px-4 py-3">
+                        <div>
+                          <p className="font-semibold text-[#2d3748]">{r.employee_name || r.employee_excel_id || 'N/A'}</p>
+                          <p className="text-xs text-[#718096]">{r.department}</p>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 font-semibold text-[#6D94C5]">
+                        ₹{Number(r.finalized_amount || 0).toLocaleString('en-IN')}
+                      </td>
+                      <td className="px-4 py-3 text-red-600 font-medium">
+                        -₹{Number(r.total_deductions || 0).toLocaleString('en-IN')}
+                      </td>
+                      <td className="px-4 py-3 text-[#718096]">{r.uploaded_by_name || 'System'}</td>
+                      <td className="px-4 py-3 text-xs text-[#718096]">
+                        {new Date(r.uploaded_at).toLocaleString('en-IN', {
+                          year: 'numeric',
+                          month: 'short',
+                          day: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </td>
+                      <td className="px-4 py-3">
+                        <button onClick={() => setImportDetail(r)}
+                          className="text-xs px-3 py-1.5 bg-[#CBDCEB] text-[#6D94C5] rounded-lg hover:bg-[#6D94C5] hover:text-white transition-all font-medium flex items-center gap-1">
+                          <Eye size={13} /> View
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        ) : (
+          <div className="text-center py-16 bg-white rounded-2xl border border-[#E8DFCA]">
+            <Download size={40} className="text-[#CBDCEB] mx-auto mb-3" />
+            <p className="text-[#718096] font-medium">No payroll imports yet</p>
+            <p className="text-xs text-[#718096] mt-1">Imported payroll data will appear here</p>
+          </div>
+        )}
+      </div>
+      )}
 
       {/* Detail Modal */}
       {detailModal && (
@@ -392,6 +499,152 @@ export default function Salary() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Import Detail Modal */}
+      {importDetail && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl w-full max-w-2xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-5 sticky top-0 bg-white pb-4 border-b border-[#E8DFCA]">
+              <div>
+                <h3 className="font-bold text-[#2d3748]">Import Details</h3>
+                <p className="text-xs text-[#6D94C5]">{importDetail.employee_name} · {new Date(importDetail.uploaded_at).toLocaleDateString('en-IN')}</p>
+              </div>
+              <button onClick={() => setImportDetail(null)}><X size={20} className="text-[#718096]" /></button>
+            </div>
+
+            <div className="space-y-4">
+              {/* Basic Info */}
+              <div className="bg-[#F5EFE6] rounded-xl p-4">
+                <p className="text-xs font-bold text-[#718096] mb-3 uppercase">Employee Information</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <p className="text-xs text-[#718096]">Employee ID</p>
+                    <p className="font-semibold text-[#2d3748]">{importDetail.employee_excel_id || 'N/A'}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-[#718096]">Name</p>
+                    <p className="font-semibold text-[#2d3748]">{importDetail.employee_name}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-[#718096]">Department</p>
+                    <p className="font-semibold text-[#2d3748]">{importDetail.department}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-[#718096]">Designation</p>
+                    <p className="font-semibold text-[#2d3748]">{importDetail.designation}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Attendance */}
+              <div className="bg-[#F5EFE6] rounded-xl p-4">
+                <p className="text-xs font-bold text-[#718096] mb-3 uppercase">Attendance</p>
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <p className="text-xs text-[#718096]">Full Days</p>
+                    <p className="font-semibold text-[#2d3748]">{importDetail.full_day || 0}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-[#718096]">Half Days</p>
+                    <p className="font-semibold text-[#2d3748]">{importDetail.half_day || 0}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-[#718096]">Paid Days</p>
+                    <p className="font-semibold text-[#2d3748]">{importDetail.paid_days || 0}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Earnings */}
+              <div className="bg-[#F5EFE6] rounded-xl p-4">
+                <p className="text-xs font-bold text-[#718096] mb-3 uppercase">Earnings</p>
+                <div className="space-y-2">
+                  {[
+                    ['Basic Salary', importDetail.basic_salary],
+                    ['Dearness Allowance', importDetail.dearness_allowance],
+                    ['House Rent Allowance', importDetail.house_rent_allowance],
+                    ['Transportation Allowance', importDetail.transportation_allowance],
+                    ['Overtime', importDetail.overtime],
+                    ['Gross Income', importDetail.gross_income],
+                  ].map(([label, value]) => (
+                    <div key={label} className="flex items-center justify-between">
+                      <span className="text-sm text-[#718096]">{label}</span>
+                      <span className="font-semibold text-[#2d3748]">₹{Number(value || 0).toLocaleString('en-IN')}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Deductions */}
+              <div className="bg-[#F5EFE6] rounded-xl p-4">
+                <p className="text-xs font-bold text-[#718096] mb-3 uppercase">Deductions</p>
+                <div className="space-y-2">
+                  {[
+                    ['Provident Fund', importDetail.provident_fund],
+                    ['ESIC', importDetail.esic_amount],
+                    ['Professional Tax', importDetail.professional_tax],
+                    ['Loan & Advance', importDetail.loan_advance],
+                    ['Other Deductions', importDetail.other_deductions],
+                    ['Total Deductions', importDetail.total_deductions],
+                  ].map(([label, value]) => (
+                    <div key={label} className="flex items-center justify-between">
+                      <span className="text-sm text-[#718096]">{label}</span>
+                      <span className={`font-semibold ${label === 'Total Deductions' ? 'text-red-600' : 'text-[#2d3748]'}`}>
+                        -₹{Number(value || 0).toLocaleString('en-IN')}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Final Amount */}
+              <div className="bg-[#CBDCEB] rounded-xl p-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-semibold text-[#2d3748]">Finalized Amount</span>
+                  <span className="text-2xl font-bold text-[#6D94C5]">₹{Number(importDetail.finalized_amount || 0).toLocaleString('en-IN')}</span>
+                </div>
+              </div>
+
+              {/* Bank Details */}
+              {importDetail.bank_account_no && (
+                <div className="bg-[#F5EFE6] rounded-xl p-4">
+                  <p className="text-xs font-bold text-[#718096] mb-3 uppercase">Bank Details</p>
+                  <div className="space-y-2">
+                    {[
+                      ['Bank Name', importDetail.bank_name],
+                      ['IFSC Code', importDetail.ifsc_code],
+                      ['Account No', importDetail.bank_account_no],
+                      ['Branch', importDetail.bank_branch_name],
+                      ['Account Type', importDetail.account_type],
+                    ].map(([label, value]) => (
+                      <div key={label} className="flex items-center justify-between">
+                        <span className="text-sm text-[#718096]">{label}</span>
+                        <span className="font-semibold text-[#2d3748]">{value || '—'}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Upload Info */}
+              <div className="bg-[#F5EFE6] rounded-xl p-4 text-xs">
+                <p className="text-[#718096]">
+                  Uploaded by <strong>{importDetail.uploaded_by_name || 'System'}</strong> on{' '}
+                  <strong>
+                    {new Date(importDetail.uploaded_at).toLocaleString('en-IN', {
+                      year: 'numeric',
+                      month: 'short',
+                      day: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
+                  </strong>
+                </p>
+              </div>
+            </div>
           </div>
         </div>
       )}
